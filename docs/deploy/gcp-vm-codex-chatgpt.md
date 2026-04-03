@@ -115,6 +115,7 @@ services:
       PAPERCLIP_AGENT_JWT_SECRET: "${PAPERCLIP_AGENT_JWT_SECRET}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       PAPERCLIP_SECRETS_STRICT_MODE: "true"
+      CODEX_HOME: "/paperclip/.codex"
       USER_UID: "1000"
       USER_GID: "1000"
     expose:
@@ -180,7 +181,19 @@ docker compose --env-file .env.gcp -f docker-compose.gcp.yml exec paperclip code
 docker compose --env-file .env.gcp -f docker-compose.gcp.yml exec paperclip codex login status
 ```
 
-Paperclip's Codex adapter reuses the shared Codex auth state and seeds company-scoped `CODEX_HOME` directories from it, so the login survives across heartbeats and restarts as long as `/paperclip` is persistent.
+Setting `CODEX_HOME=/paperclip/.codex` ensures the shared Codex auth state lives on the mounted Paperclip volume instead of the container home directory. Paperclip's Codex adapter reuses that shared auth state and seeds company-scoped `CODEX_HOME` directories from it, so the login survives across heartbeats, restarts, and container recreation as long as `/paperclip` is persistent.
+
+If you already have a working Codex ChatGPT login on your local machine, you can seed the VM from that state instead of completing device auth in the container:
+
+```sh
+gcloud compute scp ~/.codex/auth.json ~/.codex/config.toml paperclip-vm:/tmp/ --project "$PROJECT_ID" --zone "$ZONE"
+gcloud compute ssh paperclip-vm --project "$PROJECT_ID" --zone "$ZONE" --command \
+  'sudo mkdir -p /opt/paperclip/data/.codex && \
+   sudo install -m 600 -o 1000 -g 1000 /tmp/auth.json /opt/paperclip/data/.codex/auth.json && \
+   sudo install -m 600 -o 1000 -g 1000 /tmp/config.toml /opt/paperclip/data/.codex/config.toml'
+```
+
+Adjust the ownership values if your container user is not `1000:1000`.
 
 ## 6. Bootstrap the First Instance Admin
 
