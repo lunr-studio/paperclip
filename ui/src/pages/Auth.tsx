@@ -172,7 +172,7 @@ export function AuthPage() {
 
       {/* Right half — ASCII art animation (hidden on mobile) */}
       <div className="hidden md:block w-1/2 overflow-hidden">
-        <AsciiArtAnimation />
+        <AsciiArtAnimation theme="space" />
       </div>
     </div>
   );

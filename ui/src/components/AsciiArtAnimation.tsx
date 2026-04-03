@@ -27,7 +27,32 @@ const PAPERCLIP_SPRITES = [
   ],
 ] as const;
 
-type PaperclipSprite = (typeof PAPERCLIP_SPRITES)[number];
+const SPACE_SPRITES = [
+  [
+    "   ╭────╮   ",
+    " ╭╯ ○·  ╰╮ ",
+    "╱  ·  ○  │ ",
+    "│   ○  · │ ",
+    "│ ·   ○  │ ",
+    "│  ○   · ╱ ",
+    " ╰╮  ·╭╯  ",
+    "   ╰────╯  ",
+  ],
+  [
+    "   ╭────╮   ",
+    "   │ ▫▫ │   ",
+    " ╭─╯╭──╰─╮ ",
+    " │  │██│  │ ",
+    " │  │██│  │ ",
+    " │ ╭╯  ╰╮ │ ",
+    " ╰─╯    ╰─╯ ",
+    "   ╵    ╵   ",
+  ],
+] as const;
+
+type Sprite = (typeof PAPERCLIP_SPRITES)[number] | (typeof SPACE_SPRITES)[number];
+
+type AsciiArtTheme = "paperclip" | "space";
 
 interface Clip {
   x: number;
@@ -37,7 +62,7 @@ interface Clip {
   life: number;
   maxLife: number;
   drift: number;
-  sprite: PaperclipSprite;
+  sprite: Sprite;
   width: number;
   height: number;
 }
@@ -53,13 +78,17 @@ function measureChar(container: HTMLElement): { w: number; h: number } {
   return { w: rect.width, h: rect.height };
 }
 
-function spriteSize(sprite: PaperclipSprite): { width: number; height: number } {
+function spriteSize(sprite: Sprite): { width: number; height: number } {
   let width = 0;
   for (const row of sprite) width = Math.max(width, row.length);
   return { width, height: sprite.length };
 }
 
-export function AsciiArtAnimation() {
+export function AsciiArtAnimation({
+  theme = "paperclip",
+}: {
+  theme?: AsciiArtTheme;
+}) {
   const preRef = useRef<HTMLPreElement>(null);
   const frameRef = useRef<number | null>(null);
 
@@ -81,6 +110,7 @@ export function AsciiArtAnimation() {
     let clipMask = new Uint16Array(0);
     let clips: Clip[] = [];
     let lastOutput = "";
+    const sprites = theme === "space" ? SPACE_SPRITES : PAPERCLIP_SPRITES;
 
     function toGlyph(value: number): string {
       const clamped = Math.max(0, Math.min(0.999, value));
@@ -130,7 +160,7 @@ export function AsciiArtAnimation() {
       for (let baseRow = 1; baseRow < rows - 9; baseRow += gapY) {
         const startX = Math.floor(baseRow / gapY) % 2 === 0 ? 2 : 10;
         for (let baseCol = startX; baseCol < cols - 10; baseCol += gapX) {
-          const sprite = PAPERCLIP_SPRITES[(baseCol + baseRow) % PAPERCLIP_SPRITES.length]!;
+          const sprite = sprites[(baseCol + baseRow) % sprites.length]!;
           for (let sr = 0; sr < sprite.length; sr++) {
             const line = sprite[sr]!;
             for (let sc = 0; sc < line.length; sc++) {
@@ -151,7 +181,7 @@ export function AsciiArtAnimation() {
     }
 
     function spawnClip() {
-      const sprite = PAPERCLIP_SPRITES[Math.floor(Math.random() * PAPERCLIP_SPRITES.length)]!;
+      const sprite = sprites[Math.floor(Math.random() * sprites.length)]!;
       const size = spriteSize(sprite);
       const edge = Math.random();
       let x = 0;
@@ -335,7 +365,7 @@ export function AsciiArtAnimation() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       motionMedia.removeEventListener("change", onMotionChange);
     };
-  }, []);
+  }, [theme]);
 
   return (
     <pre
