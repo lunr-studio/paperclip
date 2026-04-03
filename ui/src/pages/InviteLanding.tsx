@@ -6,6 +6,7 @@ import { authApi } from "../api/auth";
 import { healthApi } from "../api/health";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
+import { BrandWordmark } from "@/components/BrandWordmark";
 import { AGENT_ADAPTER_TYPES } from "@paperclipai/shared";
 import type { AgentAdapterType, JoinRequest } from "@paperclipai/shared";
 
@@ -129,6 +130,7 @@ export function InviteLandingPage() {
     return (
       <div className="mx-auto max-w-xl py-10">
         <div className="rounded-lg border border-border bg-card p-6">
+          <BrandWordmark className="mb-4 h-8 max-w-[112px]" />
           <h1 className="text-lg font-semibold">Invite not available</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             This invite may be expired, revoked, or already used.
@@ -142,6 +144,7 @@ export function InviteLandingPage() {
     return (
       <div className="mx-auto max-w-xl py-10">
         <div className="rounded-lg border border-border bg-card p-6">
+          <BrandWordmark className="mb-4 h-8 max-w-[112px]" />
           <h1 className="text-lg font-semibold">Bootstrap complete</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             The first instance admin is now configured. You can continue to the board.
@@ -177,6 +180,7 @@ export function InviteLandingPage() {
     return (
       <div className="mx-auto max-w-xl py-10">
         <div className="rounded-lg border border-border bg-card p-6">
+          <BrandWordmark className="mb-4 h-8 max-w-[112px]" />
           <h1 className="text-lg font-semibold">Join request submitted</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Your request is pending admin approval. You will not have access until approved.
@@ -227,6 +231,7 @@ export function InviteLandingPage() {
   return (
     <div className="mx-auto max-w-xl py-10">
       <div className="rounded-lg border border-border bg-card p-6">
+        <BrandWordmark className="mb-4 h-8 max-w-[112px]" />
         <h1 className="text-xl font-semibold">
           {invite.inviteType === "bootstrap_ceo"
             ? "Bootstrap your Paperclip instance"

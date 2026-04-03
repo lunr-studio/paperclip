@@ -29,6 +29,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { Company } from "@paperclipai/shared";
+import { BrandWordmark } from "./BrandWordmark";
 import { CompanyPatternIcon } from "./CompanyPatternIcon";
 
 const ORDER_STORAGE_KEY = "paperclip.companyOrder";
@@ -271,11 +272,7 @@ export function CompanyRail() {
     <div className="flex flex-col items-center w-[72px] shrink-0 h-full bg-background border-r border-border">
       {/* Brand mark - aligned with top sections (implied line, no visible border) */}
       <div className="flex items-center justify-center h-12 w-full shrink-0">
-        <img
-          src="/lunr-logo.png"
-          alt="Lunr"
-          className="h-7 w-auto max-w-[52px] object-contain"
-        />
+        <BrandWordmark className="h-7 max-w-[52px]" />
       </div>
 
       {/* Company list */}
