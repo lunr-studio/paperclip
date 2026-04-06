@@ -1,3 +1,4 @@
+import type { LookupAddress } from "node:dns";
 import { lookup as dnsLookup } from "node:dns/promises";
 import type { IncomingMessage, RequestOptions as HttpRequestOptions } from "node:http";
 import { request as httpRequest } from "node:http";
@@ -177,12 +178,12 @@ export async function resolveInviteResolutionTarget(
     );
   });
 
-  let results: Awaited<ReturnType<typeof dnsLookup>>;
+  let results: LookupAddress[];
   try {
-    results = await Promise.race([
+    results = (await Promise.race([
       dnsLookup(originalHostname, { all: true, verbatim: true }),
       timeoutPromise,
-    ]);
+    ])) as LookupAddress[];
   } catch (error) {
     const durationMs = Date.now() - lookupStartedAt;
     throw new Error(
@@ -200,7 +201,7 @@ export async function resolveInviteResolutionTarget(
   }
 
   const safeResults = results.filter(
-    (entry) => !isPrivateOrReservedIp(entry.address)
+    (entry: LookupAddress) => !isPrivateOrReservedIp(entry.address)
   );
   if (safeResults.length === 0) {
     throw new InviteResolutionTargetError(
