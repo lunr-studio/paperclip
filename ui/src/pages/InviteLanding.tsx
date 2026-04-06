@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "@/lib/router";
+import { Link, useNavigate, useParams } from "@/lib/router";
 import { accessApi } from "../api/access";
 import { authApi } from "../api/auth";
 import { healthApi } from "../api/health";
@@ -9,6 +9,11 @@ import { Button } from "@/components/ui/button";
 import { BrandWordmark } from "@/components/BrandWordmark";
 import { AGENT_ADAPTER_TYPES } from "@paperclipai/shared";
 import type { AgentAdapterType, JoinRequest } from "@paperclipai/shared";
+import {
+  clearStoredInviteAccessCode,
+  readStoredInviteAccessCode,
+  writeStoredInviteAccessCode,
+} from "../lib/inviteAccessCode";
 
 type JoinType = "human" | "agent";
 const joinAdapterOptions: AgentAdapterType[] = [...AGENT_ADAPTER_TYPES];
@@ -43,12 +48,14 @@ function readNestedString(value: unknown, path: string[]): string | null {
 
 export function InviteLandingPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const params = useParams();
   const token = (params.token ?? "").trim();
   const [joinType, setJoinType] = useState<JoinType>("human");
   const [agentName, setAgentName] = useState("");
   const [adapterType, setAdapterType] = useState<AgentAdapterType>("claude_local");
   const [capabilities, setCapabilities] = useState("");
+  const [accessCode, setAccessCode] = useState("");
   const [result, setResult] = useState<{ kind: "bootstrap" | "join"; payload: unknown } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,10 +91,21 @@ export function InviteLandingPage() {
     }
   }, [availableJoinTypes, joinType]);
 
+  useEffect(() => {
+    setAccessCode(readStoredInviteAccessCode(token));
+  }, [token]);
+
+  useEffect(() => {
+    writeStoredInviteAccessCode(token, accessCode);
+  }, [token, accessCode]);
+
   const requiresAuthForHuman =
     joinType === "human" &&
     healthQuery.data?.deploymentMode === "authenticated" &&
     !sessionQuery.data;
+  const requiresAccessCode =
+    joinType === "human" &&
+    invite?.requiresAccessCode === true;
 
   const acceptMutation = useMutation({
     mutationFn: async () => {
@@ -96,10 +114,14 @@ export function InviteLandingPage() {
         return accessApi.acceptInvite(token, { requestType: "human" });
       }
       if (joinType === "human") {
-        return accessApi.acceptInvite(token, { requestType: "human" });
+        return accessApi.acceptInvite(token, {
+          requestType: "human",
+          accessCode: accessCode.trim() || null,
+        });
       }
       return accessApi.acceptInvite(token, {
         requestType: "agent",
+        accessCode: accessCode.trim() || null,
         agentName: agentName.trim(),
         adapterType,
         capabilities: capabilities.trim() || null,
@@ -107,6 +129,7 @@ export function InviteLandingPage() {
     },
     onSuccess: async (payload) => {
       setError(null);
+      clearStoredInviteAccessCode(token);
       await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
       await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
       const asBootstrap =
@@ -301,12 +324,38 @@ export function InviteLandingPage() {
           </div>
         )}
 
+        {requiresAccessCode && (
+          <div className="mt-4 space-y-3">
+            <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+              {invite.accessCodePrompt ??
+                "Enter the collaborator access code to continue this invite."}
+            </div>
+            <label className="block text-sm">
+              <span className="mb-1 block text-muted-foreground">Access code</span>
+              <input
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                type="password"
+                value={accessCode}
+                onChange={(event) => setAccessCode(event.target.value)}
+                autoComplete="one-time-code"
+              />
+            </label>
+          </div>
+        )}
+
         {requiresAuthForHuman && (
           <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-sm">
             Sign in or create an account before submitting a human join request.
             <div className="mt-2">
-              <Button asChild size="sm" variant="outline">
-                <Link to={`/auth?next=${encodeURIComponent(`/invite/${token}`)}`}>Sign in / Create account</Link>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={requiresAccessCode && accessCode.trim().length === 0}
+                onClick={() => {
+                  navigate(`/auth?next=${encodeURIComponent(`/invite/${token}`)}`);
+                }}
+              >
+                Sign in / Create account
               </Button>
             </div>
           </div>
@@ -318,6 +367,7 @@ export function InviteLandingPage() {
           className="mt-5"
           disabled={
             acceptMutation.isPending ||
+            (requiresAccessCode && accessCode.trim().length === 0) ||
             (joinType === "agent" && invite.inviteType !== "bootstrap_ceo" && agentName.trim().length === 0) ||
             requiresAuthForHuman
           }

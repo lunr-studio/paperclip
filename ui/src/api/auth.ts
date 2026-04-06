@@ -60,11 +60,22 @@ export const authApi = {
     return nested;
   },
 
-  signInEmail: async (input: { email: string; password: string }) => {
+  signInEmail: async (input: {
+    email: string;
+    password: string;
+    inviteToken?: string;
+    accessCode?: string;
+  }) => {
     await authPost("/sign-in/email", input);
   },
 
-  signUpEmail: async (input: { name: string; email: string; password: string }) => {
+  signUpEmail: async (input: {
+    name: string;
+    email: string;
+    password: string;
+    inviteToken?: string;
+    accessCode?: string;
+  }) => {
     await authPost("/sign-up/email", input);
   },
 

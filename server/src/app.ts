@@ -45,6 +45,12 @@ import { setPluginEventBus } from "./services/activity-log.js";
 import { createPluginDevWatcher } from "./services/plugin-dev-watcher.js";
 import { createPluginHostServiceCleanup } from "./services/plugin-host-service-cleanup.js";
 import { pluginRegistryService } from "./services/plugin-registry.js";
+import {
+  findInviteByToken,
+  inviteRequiresCollaboratorAccessCode,
+  inviteUnavailable,
+  validateInviteCollaboratorAccessCode,
+} from "./invite-access-code.js";
 import { createHostClientHandlers } from "@paperclipai/plugin-sdk";
 import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 
@@ -131,7 +137,47 @@ export async function createApp(
     });
   });
   if (opts.betterAuthHandler) {
-    app.all("/api/auth/*authPath", opts.betterAuthHandler);
+    app.all("/api/auth/*authPath", async (req, res, next) => {
+      const isInviteContinuationAuth =
+        req.path.endsWith("/sign-in/email") || req.path.endsWith("/sign-up/email");
+      if (!isInviteContinuationAuth || !req.body || typeof req.body !== "object") {
+        next();
+        return;
+      }
+
+      const inviteToken =
+        typeof (req.body as { inviteToken?: unknown }).inviteToken === "string"
+          ? (req.body as { inviteToken: string }).inviteToken.trim()
+          : "";
+      if (!inviteToken) {
+        next();
+        return;
+      }
+
+      const accessCode =
+        typeof (req.body as { accessCode?: unknown }).accessCode === "string"
+          ? (req.body as { accessCode: string }).accessCode
+          : null;
+      delete (req.body as Record<string, unknown>).inviteToken;
+      delete (req.body as Record<string, unknown>).accessCode;
+
+      const invite = await findInviteByToken(db, inviteToken);
+      if (!invite || inviteUnavailable(invite) || invite.acceptedAt) {
+        res.status(404).json({ error: "Invite not found" });
+        return;
+      }
+      if (
+        inviteRequiresCollaboratorAccessCode(invite) &&
+        !validateInviteCollaboratorAccessCode(invite, accessCode)
+      ) {
+        res.status(403).json({
+          error: "A valid collaborator access code is required to continue this invite",
+        });
+        return;
+      }
+
+      next();
+    }, opts.betterAuthHandler);
   }
   app.use(llmRoutes(db));
 

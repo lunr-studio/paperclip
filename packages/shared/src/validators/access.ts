@@ -25,6 +25,7 @@ export type CreateOpenClawInvitePrompt = z.infer<
 
 export const acceptInviteSchema = z.object({
   requestType: z.enum(JOIN_REQUEST_TYPES),
+  accessCode: z.string().min(1).max(120).optional().nullable(),
   agentName: z.string().min(1).max(120).optional(),
   adapterType: z.enum(AGENT_ADAPTER_TYPES).optional(),
   capabilities: z.string().max(4000).optional().nullable(),

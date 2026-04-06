@@ -53,6 +53,13 @@ import {
   claimBoardOwnership,
   inspectBoardClaimChallenge
 } from "../board-claim.js";
+import {
+  findInviteByToken,
+  getInviteAccessCodePrompt,
+  inviteRequiresCollaboratorAccessCode,
+  inviteUnavailable,
+  validateInviteCollaboratorAccessCode
+} from "../invite-access-code.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -864,12 +871,15 @@ function toInviteSummaryResponse(
   const onboardingPath = `/api/invites/${token}/onboarding`;
   const onboardingTextPath = `/api/invites/${token}/onboarding.txt`;
   const inviteMessage = extractInviteMessage(invite);
+  const accessCodePrompt = getInviteAccessCodePrompt(invite);
   return {
     id: invite.id,
     companyId: invite.companyId,
     companyName,
     inviteType: invite.inviteType,
     allowedJoinTypes: invite.allowedJoinTypes,
+    requiresAccessCode: Boolean(accessCodePrompt),
+    accessCodePrompt,
     expiresAt: invite.expiresAt,
     onboardingPath,
     onboardingUrl: baseUrl ? `${baseUrl}${onboardingPath}` : onboardingPath,
@@ -2040,14 +2050,10 @@ export function accessRoutes(
   router.get("/invites/:token", async (req, res) => {
     const token = (req.params.token as string).trim();
     if (!token) throw notFound("Invite not found");
-    const invite = await db
-      .select()
-      .from(invites)
-      .where(eq(invites.tokenHash, hashToken(token)))
-      .then((rows) => rows[0] ?? null);
+    const invite = await findInviteByToken(db, token);
     if (
       !invite ||
-      invite.revokedAt ||
+      inviteUnavailable(invite) ||
       invite.acceptedAt ||
       inviteExpired(invite)
     ) {
@@ -2149,12 +2155,8 @@ export function accessRoutes(
       const token = (req.params.token as string).trim();
       if (!token) throw notFound("Invite not found");
 
-      const invite = await db
-        .select()
-        .from(invites)
-        .where(eq(invites.tokenHash, hashToken(token)))
-        .then((rows) => rows[0] ?? null);
-      if (!invite || invite.revokedAt || inviteExpired(invite)) {
+      const invite = await findInviteByToken(db, token);
+      if (!invite || inviteUnavailable(invite)) {
         throw notFound("Invite not found");
       }
       const inviteAlreadyAccepted = Boolean(invite.acceptedAt);
@@ -2207,6 +2209,15 @@ export function accessRoutes(
         invite.allowedJoinTypes !== requestType
       ) {
         throw badRequest(`Invite does not allow ${requestType} joins`);
+      }
+      if (
+        requestType === "human" &&
+        inviteRequiresCollaboratorAccessCode(invite) &&
+        !validateInviteCollaboratorAccessCode(invite, req.body.accessCode)
+      ) {
+        throw forbidden(
+          "A valid collaborator access code is required to continue this invite"
+        );
       }
 
       if (requestType === "human" && req.actor.type !== "board") {

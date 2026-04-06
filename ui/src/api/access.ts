@@ -7,6 +7,8 @@ type InviteSummary = {
   companyName?: string | null;
   inviteType: "company_join" | "bootstrap_ceo";
   allowedJoinTypes: "human" | "agent" | "both";
+  requiresAccessCode?: boolean;
+  accessCodePrompt?: string | null;
   expiresAt: string;
   onboardingPath?: string;
   onboardingUrl?: string;
@@ -18,9 +20,10 @@ type InviteSummary = {
 };
 
 type AcceptInviteInput =
-  | { requestType: "human" }
+  | { requestType: "human"; accessCode?: string | null }
   | {
     requestType: "agent";
+    accessCode?: string | null;
     agentName: string;
     adapterType?: AgentAdapterType;
     capabilities?: string | null;

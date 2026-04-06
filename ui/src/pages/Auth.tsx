@@ -2,10 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { authApi } from "../api/auth";
+import { accessApi } from "../api/access";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { AsciiArtAnimation } from "@/components/AsciiArtAnimation";
 import { BrandWordmark } from "@/components/BrandWordmark";
+import {
+  extractInviteTokenFromNextPath,
+  readStoredInviteAccessCode,
+  writeStoredInviteAccessCode,
+} from "../lib/inviteAccessCode";
 
 type AuthMode = "sign_in" | "sign_up";
 
@@ -17,14 +23,34 @@ export function AuthPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [accessCode, setAccessCode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const nextPath = useMemo(() => searchParams.get("next") || "/", [searchParams]);
+  const inviteToken = useMemo(
+    () => extractInviteTokenFromNextPath(nextPath),
+    [nextPath],
+  );
   const { data: session, isLoading: isSessionLoading } = useQuery({
     queryKey: queryKeys.auth.session,
     queryFn: () => authApi.getSession(),
     retry: false,
   });
+  const inviteQuery = useQuery({
+    queryKey: inviteToken ? queryKeys.access.invite(inviteToken) : ["access", "invite", "__none__"],
+    queryFn: () => accessApi.getInvite(inviteToken!),
+    enabled: Boolean(inviteToken),
+    retry: false,
+  });
+
+  useEffect(() => {
+    setAccessCode(inviteToken ? readStoredInviteAccessCode(inviteToken) : "");
+  }, [inviteToken]);
+
+  useEffect(() => {
+    if (!inviteToken) return;
+    writeStoredInviteAccessCode(inviteToken, accessCode);
+  }, [inviteToken, accessCode]);
 
   useEffect(() => {
     if (session) {
@@ -35,13 +61,20 @@ export function AuthPage() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (mode === "sign_in") {
-        await authApi.signInEmail({ email: email.trim(), password });
+        await authApi.signInEmail({
+          email: email.trim(),
+          password,
+          inviteToken: inviteToken ?? undefined,
+          accessCode: accessCode.trim() || undefined,
+        });
         return;
       }
       await authApi.signUpEmail({
         name: name.trim(),
         email: email.trim(),
         password,
+        inviteToken: inviteToken ?? undefined,
+        accessCode: accessCode.trim() || undefined,
       });
     },
     onSuccess: async () => {
@@ -58,6 +91,7 @@ export function AuthPage() {
   const canSubmit =
     email.trim().length > 0 &&
     password.trim().length > 0 &&
+    (!inviteQuery.data?.requiresAccessCode || accessCode.trim().length > 0) &&
     (mode === "sign_in" || (name.trim().length > 0 && password.trim().length >= 8));
 
   if (isSessionLoading) {
@@ -85,6 +119,12 @@ export function AuthPage() {
               ? "Use your email and password to access this Lunr Studio instance."
               : "Create an account for this Lunr Studio instance. Email confirmation is not required in v1."}
           </p>
+          {inviteQuery.data?.requiresAccessCode && (
+            <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+              {inviteQuery.data.accessCodePrompt ??
+                "Enter the collaborator access code to continue this invite."}
+            </div>
+          )}
 
           <form
             className="mt-6 space-y-4"
@@ -139,6 +179,20 @@ export function AuthPage() {
                 autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
               />
             </div>
+            {inviteQuery.data?.requiresAccessCode && (
+              <div>
+                <label htmlFor="access-code" className="text-xs text-muted-foreground mb-1 block">Access code</label>
+                <input
+                  id="access-code"
+                  name="accessCode"
+                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                  type="password"
+                  value={accessCode}
+                  onChange={(event) => setAccessCode(event.target.value)}
+                  autoComplete="one-time-code"
+                />
+              </div>
+            )}
             {error && <p className="text-xs text-destructive">{error}</p>}
             <Button
               type="submit"
