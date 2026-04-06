@@ -60,6 +60,11 @@ import {
   inviteUnavailable,
   validateInviteCollaboratorAccessCode
 } from "../invite-access-code.js";
+import {
+  InviteResolutionTargetError,
+  type InviteResolutionProbe,
+  probeInviteResolutionUrl
+} from "../invite-resolution-probe.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -1499,83 +1504,6 @@ function isInviteTokenHashCollisionError(error: unknown) {
   return false;
 }
 
-function isAbortError(error: unknown) {
-  return error instanceof Error && error.name === "AbortError";
-}
-
-type InviteResolutionProbe = {
-  status: "reachable" | "timeout" | "unreachable";
-  method: "HEAD";
-  durationMs: number;
-  httpStatus: number | null;
-  message: string;
-};
-
-async function probeInviteResolutionTarget(
-  url: URL,
-  timeoutMs: number
-): Promise<InviteResolutionProbe> {
-  const startedAt = Date.now();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, {
-      method: "HEAD",
-      redirect: "manual",
-      signal: controller.signal
-    });
-    const durationMs = Date.now() - startedAt;
-    if (
-      response.ok ||
-      response.status === 401 ||
-      response.status === 403 ||
-      response.status === 404 ||
-      response.status === 405 ||
-      response.status === 422 ||
-      response.status === 500 ||
-      response.status === 501
-    ) {
-      return {
-        status: "reachable",
-        method: "HEAD",
-        durationMs,
-        httpStatus: response.status,
-        message: `Webhook endpoint responded to HEAD with HTTP ${response.status}.`
-      };
-    }
-    return {
-      status: "unreachable",
-      method: "HEAD",
-      durationMs,
-      httpStatus: response.status,
-      message: `Webhook endpoint probe returned HTTP ${response.status}.`
-    };
-  } catch (error) {
-    const durationMs = Date.now() - startedAt;
-    if (isAbortError(error)) {
-      return {
-        status: "timeout",
-        method: "HEAD",
-        durationMs,
-        httpStatus: null,
-        message: `Webhook endpoint probe timed out after ${timeoutMs}ms.`
-      };
-    }
-    return {
-      status: "unreachable",
-      method: "HEAD",
-      durationMs,
-      httpStatus: null,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Webhook endpoint probe failed."
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 export function accessRoutes(
   db: Db,
   opts: {
@@ -2107,6 +2035,10 @@ export function accessRoutes(
   });
 
   router.get("/invites/:token/test-resolution", async (req, res) => {
+    if (req.actor.type !== "board") {
+      throw unauthorized("Board authentication required");
+    }
+
     const token = (req.params.token as string).trim();
     if (!token) throw notFound("Invite not found");
     const invite = await db
@@ -2117,20 +2049,14 @@ export function accessRoutes(
     if (!invite || invite.revokedAt || inviteExpired(invite)) {
       throw notFound("Invite not found");
     }
+    if (!invite.companyId) {
+      throw conflict("Invite is missing company scope");
+    }
+    await assertCompanyPermission(req, invite.companyId, "users:invite");
 
     const rawUrl =
       typeof req.query.url === "string" ? req.query.url.trim() : "";
     if (!rawUrl) throw badRequest("url query parameter is required");
-    let target: URL;
-    try {
-      target = new URL(rawUrl);
-    } catch {
-      throw badRequest("url must be an absolute http(s) URL");
-    }
-    if (target.protocol !== "http:" && target.protocol !== "https:") {
-      throw badRequest("url must use http or https");
-    }
-
     const parsedTimeoutMs =
       typeof req.query.timeoutMs === "string"
         ? Number(req.query.timeoutMs)
@@ -2138,11 +2064,32 @@ export function accessRoutes(
     const timeoutMs = Number.isFinite(parsedTimeoutMs)
       ? Math.max(1000, Math.min(15000, Math.floor(parsedTimeoutMs)))
       : 5000;
-    const probe = await probeInviteResolutionTarget(target, timeoutMs);
+    let requestedUrl = rawUrl;
+    let probe: InviteResolutionProbe;
+    try {
+      const result = await probeInviteResolutionUrl(rawUrl, timeoutMs);
+      requestedUrl = result.requestedUrl;
+      probe = result.probe;
+    } catch (error) {
+      if (error instanceof InviteResolutionTargetError) {
+        logger.warn(
+          {
+            inviteId: invite.id,
+            companyId: invite.companyId,
+            hostname: error.hostname,
+            code: error.code,
+          },
+          "access: blocked invite resolution probe target"
+        );
+        throw badRequest(error.message);
+      }
+      throw error;
+    }
+
     res.json({
       inviteId: invite.id,
       testResolutionPath: `/api/invites/${token}/test-resolution`,
-      requestedUrl: target.toString(),
+      requestedUrl,
       timeoutMs,
       ...probe
     });
