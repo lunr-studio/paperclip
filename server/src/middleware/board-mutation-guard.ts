@@ -1,4 +1,5 @@
 import type { Request, RequestHandler } from "express";
+import { extractRequestHostHeader } from "../request-host.js";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const DEFAULT_DEV_ORIGINS = [
@@ -18,8 +19,7 @@ function parseOrigin(value: string | undefined) {
 
 function trustedOriginsForRequest(req: Request) {
   const origins = new Set(DEFAULT_DEV_ORIGINS.map((value) => value.toLowerCase()));
-  const forwardedHost = req.header("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = forwardedHost || req.header("host")?.trim();
+  const host = extractRequestHostHeader(req);
   if (host) {
     origins.add(`http://${host}`.toLowerCase());
     origins.add(`https://${host}`.toLowerCase());

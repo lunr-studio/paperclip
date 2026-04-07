@@ -94,6 +94,34 @@ describe("cli auth routes", () => {
     expect(res.body.approvalUrl).toContain("/cli-auth/challenge-1?token=pcp_cli_auth_secret");
   });
 
+  it("builds approval URLs from Host instead of x-forwarded-host", async () => {
+    mockBoardAuthService.createCliAuthChallenge.mockResolvedValue({
+      challenge: {
+        id: "challenge-2",
+        expiresAt: new Date("2026-03-23T13:00:00.000Z"),
+      },
+      challengeSecret: "pcp_cli_auth_secret_2",
+      pendingBoardToken: "pcp_board_token_2",
+    });
+
+    const app = await createApp({ type: "none", source: "none" });
+    const res = await request(app)
+      .post("/api/cli-auth/challenges")
+      .set("Host", "paperclip.example.com")
+      .set("X-Forwarded-Host", "evil.example.com")
+      .set("X-Forwarded-Proto", "https")
+      .send({
+        command: "paperclipai company import",
+        clientName: "paperclipai cli",
+        requestedAccess: "board",
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.approvalUrl).toBe(
+      "https://paperclip.example.com/cli-auth/challenge-2?token=pcp_cli_auth_secret_2",
+    );
+  });
+
   it("marks challenge status as requiring sign-in for anonymous viewers", async () => {
     mockBoardAuthService.describeCliAuthChallenge.mockResolvedValue({
       id: "challenge-1",

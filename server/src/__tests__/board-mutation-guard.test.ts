@@ -84,7 +84,7 @@ describe("boardMutationGuard", () => {
     expect(res.status).toBe(204);
   });
 
-  it("allows board mutations when x-forwarded-host matches origin", async () => {
+  it("ignores x-forwarded-host when checking trusted origins", async () => {
     const app = createApp("board");
     const res = await request(app)
       .post("/mutate")
@@ -92,18 +92,18 @@ describe("boardMutationGuard", () => {
       .set("X-Forwarded-Host", "10.90.10.20:3443")
       .set("Origin", "https://10.90.10.20:3443")
       .send({ ok: true });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(403);
   });
 
-  it("blocks board mutations when x-forwarded-host does not match origin", async () => {
+  it("allows board mutations when the real host matches origin even if x-forwarded-host is spoofed", async () => {
     const app = createApp("board");
     const res = await request(app)
       .post("/mutate")
-      .set("Host", "127.0.0.1")
-      .set("X-Forwarded-Host", "10.90.10.20:3443")
-      .set("Origin", "https://evil.example.com")
+      .set("Host", "paperclip.example.com")
+      .set("X-Forwarded-Host", "evil.example.com")
+      .set("Origin", "https://paperclip.example.com")
       .send({ ok: true });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(204);
   });
 
   it("does not block authenticated agent mutations", async () => {

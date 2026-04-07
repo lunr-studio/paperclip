@@ -65,6 +65,7 @@ import {
   type InviteResolutionProbe,
   probeInviteResolutionUrl
 } from "../invite-resolution-probe.js";
+import { requestBaseUrl } from "../request-host.js";
 
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -100,15 +101,6 @@ function tokenHashesMatch(left: string, right: string) {
     leftBytes.length === rightBytes.length &&
     timingSafeEqual(leftBytes, rightBytes)
   );
-}
-
-function requestBaseUrl(req: Request) {
-  const forwardedProto = req.header("x-forwarded-proto");
-  const proto = forwardedProto?.split(",")[0]?.trim() || req.protocol || "http";
-  const host =
-    req.header("x-forwarded-host")?.split(",")[0]?.trim() || req.header("host");
-  if (!host) return "";
-  return `${proto}://${host}`;
 }
 
 function buildCliAuthApprovalPath(challengeId: string, token: string) {
