@@ -18,6 +18,8 @@ This setup uses:
 
 This is the simplest internet-facing deployment that still supports login, TLS, and durable Codex authentication across restarts.
 
+For day-2 operations after deployment, use the companion runbook in [GCP VM Operations](/Users/trishan/Documents/paperclip/docs/deploy/gcp-vm-operations.md).
+
 ## Recommended Runtime Shape
 
 - VM: `e2-standard-2`
@@ -256,8 +258,14 @@ This deployment stores state on the VM under:
 
 Recommended follow-ups:
 
-- take regular disk snapshots or back up `/opt/paperclip/data`
+- take regular GCE boot-disk snapshots after triggering a fresh in-app SQL backup
 - verify containers restart automatically after reboot
 - monitor `docker compose logs` and `/api/health`
+
+Use the tracked operator scripts and runbook for those steps:
+
+- [gcp-vm-backup.sh](/Users/trishan/Documents/paperclip/scripts/gcp-vm-backup.sh)
+- [gcp-vm-healthcheck.sh](/Users/trishan/Documents/paperclip/scripts/gcp-vm-healthcheck.sh)
+- [GCP VM Operations](/Users/trishan/Documents/paperclip/docs/deploy/gcp-vm-operations.md)
 
 For higher durability later, move to managed PostgreSQL and object storage, but keep the same public URL and reverse-proxy pattern.

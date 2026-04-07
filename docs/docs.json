@@ -79,6 +79,7 @@
               "deploy/tailscale-private-access",
               "deploy/docker",
               "deploy/gcp-vm-codex-chatgpt",
+              "deploy/gcp-vm-operations",
               "deploy/deployment-modes",
               "deploy/database",
               "deploy/secrets",
