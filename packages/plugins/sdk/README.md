@@ -26,7 +26,8 @@ Reference: `doc/plugins/PLUGIN_SPEC.md`
 
 ## Manifest entrypoints
 
-In your plugin manifest you declare:
+In your plugin manifest you declare package-relative entrypoints that must stay
+inside the installed plugin package root:
 
 - **`entrypoints.worker`** (required) — Path to the worker bundle (e.g. `dist/worker.js`). The host loads this and calls `setup(ctx)`.
 - **`entrypoints.ui`** (required if you use UI) — Path to the UI bundle directory. The host loads components from here for slots and launchers.

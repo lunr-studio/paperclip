@@ -285,6 +285,10 @@ Rules:
 
 Each plugin package must export a manifest, a worker entrypoint, and optionally a UI bundle.
 
+The worker and UI entrypoints must be declared as package-relative paths. They
+must resolve inside the installed plugin package root after path normalization;
+absolute paths and `..` escapes are invalid.
+
 Suggested package layout:
 
 - `dist/manifest.js`
@@ -353,7 +357,9 @@ Rules:
 - `apiVersion` must match the host-supported plugin API version
 - `capabilities` must be static and install-time visible
 - config schema must be JSON Schema compatible
+- `entrypoints.worker` must point to a package-relative file inside the plugin package root
 - `entrypoints.ui` points to the directory containing the built UI bundle
+- `entrypoints.ui` must be package-relative and stay inside the plugin package root
 - `ui.slots` declares which extension slots the plugin fills, so the host knows what to mount without loading the bundle eagerly; each slot references an `exportName` from the UI bundle
 
 ## 11. Agent Tools

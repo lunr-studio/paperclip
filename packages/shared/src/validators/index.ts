@@ -266,6 +266,7 @@ export {
 } from "./access.js";
 
 export {
+  isValidPluginEntrypointPath,
   jsonSchemaSchema,
   pluginJobDeclarationSchema,
   pluginWebhookDeclarationSchema,

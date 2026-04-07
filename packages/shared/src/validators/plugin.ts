@@ -1,3 +1,4 @@
+import path from "node:path";
 import { z } from "zod";
 import {
   PLUGIN_STATUSES,
@@ -12,6 +13,9 @@ import {
   PLUGIN_LAUNCHER_RENDER_ENVIRONMENTS,
   PLUGIN_STATE_SCOPE_KINDS,
 } from "../constants.js";
+
+const WINDOWS_DRIVE_ABSOLUTE_PATTERN = /^[A-Za-z]:[\\/]/;
+const UNC_ABSOLUTE_PATTERN = /^(?:\\\\|\/\/)/;
 
 // ---------------------------------------------------------------------------
 // JSON Schema placeholder – a permissive validator for JSON Schema objects
@@ -61,6 +65,35 @@ function isValidCronExpression(expression: string): boolean {
   const fields = trimmed.split(/\s+/);
   if (fields.length !== 5) return false;
   return fields.every((f) => CRON_FIELD_PATTERN.test(f));
+}
+
+export function isValidPluginEntrypointPath(entrypoint: string): boolean {
+  const trimmed = entrypoint.trim();
+  if (!trimmed) return false;
+
+  if (
+    pathLooksAbsolute(trimmed)
+  ) {
+    return false;
+  }
+
+  const normalized = trimTrailingSlashes(path.normalize(trimmed.replace(/\\/g, "/")));
+  if (normalized === ".." || normalized.startsWith("../")) {
+    return false;
+  }
+
+  return true;
+}
+
+function pathLooksAbsolute(entrypoint: string): boolean {
+  return path.posix.isAbsolute(entrypoint)
+    || path.win32.isAbsolute(entrypoint)
+    || UNC_ABSOLUTE_PATTERN.test(entrypoint)
+    || WINDOWS_DRIVE_ABSOLUTE_PATTERN.test(entrypoint);
+}
+
+function trimTrailingSlashes(value: string): string {
+  return value.replace(/\/+$/g, "");
 }
 
 export const pluginJobDeclarationSchema = z.object({
@@ -358,8 +391,8 @@ export type PluginLauncherDeclarationInput = z.infer<typeof pluginLauncherDeclar
  * | `minimumHostVersion`     | string?    | semver lower bound if present, no leading `v`|
  * | `minimumPaperclipVersion`| string?    | legacy alias of `minimumHostVersion`         |
  * | `capabilities`           | enum[]     | at least one; values from PLUGIN_CAPABILITIES|
- * | `entrypoints.worker`     | string     | min 1 char                                   |
- * | `entrypoints.ui`         | string?    | required when `ui.slots` is declared         |
+ * | `entrypoints.worker`     | string     | non-empty package-relative path              |
+ * | `entrypoints.ui`         | string?    | package-relative if present                  |
  *
  * Cross-field rules enforced via `superRefine`:
  * - `entrypoints.ui` required when `ui.slots` declared
@@ -398,8 +431,14 @@ export const pluginManifestV1Schema = z.object({
   ).optional(),
   capabilities: z.array(z.enum(PLUGIN_CAPABILITIES)).min(1),
   entrypoints: z.object({
-    worker: z.string().min(1),
-    ui: z.string().min(1).optional(),
+    worker: z.string().min(1).refine(
+      (value) => isValidPluginEntrypointPath(value),
+      { message: "entrypoints.worker must be a package-relative path that stays inside the plugin package root" },
+    ),
+    ui: z.string().min(1).refine(
+      (value) => isValidPluginEntrypointPath(value),
+      { message: "entrypoints.ui must be a package-relative path that stays inside the plugin package root" },
+    ).optional(),
   }),
   instanceConfigSchema: jsonSchemaSchema.optional(),
   jobs: z.array(pluginJobDeclarationSchema).optional(),

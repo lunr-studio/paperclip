@@ -41,6 +41,12 @@ import type {
 import { logger } from "../middleware/logger.js";
 import { pluginManifestValidator } from "./plugin-manifest-validator.js";
 import { pluginCapabilityValidator } from "./plugin-capability-validator.js";
+import {
+  isPathInsideDir,
+  listPluginPackageRootCandidates,
+  resolveManagedInstallPackageDir,
+  resolvePluginPackageEntrypoint,
+} from "./plugin-entrypoints.js";
 import { pluginRegistryService } from "./plugin-registry.js";
 import type { PluginWorkerManager, WorkerStartOptions, WorkerToHostHandlers } from "./plugin-worker-manager.js";
 import type { PluginEventBus } from "./plugin-event-bus.js";
@@ -1888,67 +1894,24 @@ function resolveWorkerEntrypoint(
   const manifest = plugin.manifestJson;
   const workerRelPath = manifest.entrypoints.worker;
 
-  // For local-path installs we persist the resolved package path; use it first
-  if (plugin.packagePath && existsSync(plugin.packagePath)) {
-    const entrypoint = path.resolve(plugin.packagePath, workerRelPath);
-    if (entrypoint.startsWith(path.resolve(plugin.packagePath)) && existsSync(entrypoint)) {
-      return entrypoint;
-    }
+  const entrypoint = resolvePluginPackageEntrypoint(
+    localPluginDir,
+    plugin.packageName,
+    workerRelPath,
+    plugin.packagePath,
+  );
+  if (entrypoint) {
+    return entrypoint;
   }
 
-  // Try the local plugin directory (standard npm install location)
-  const packageName = plugin.packageName;
-  let packageDir: string;
-
-  if (packageName.startsWith("@")) {
-    // Scoped package: @scope/plugin-name → localPluginDir/node_modules/@scope/plugin-name
-    const [scope, name] = packageName.split("/");
-    packageDir = path.join(localPluginDir, "node_modules", scope!, name!);
-  } else {
-    packageDir = path.join(localPluginDir, "node_modules", packageName);
-  }
-
-  // Also check if the package exists directly under localPluginDir
-  // (for direct local-path installs or symlinked packages)
-  const directDir = path.join(localPluginDir, packageName);
-
-  // Try in order: node_modules path, direct path
-  for (const dir of [packageDir, directDir]) {
-    const entrypoint = path.resolve(dir, workerRelPath);
-
-    // Security: ensure entrypoint is actually inside the directory (prevent path traversal)
-    if (!entrypoint.startsWith(path.resolve(dir))) {
-      continue;
-    }
-
-    if (existsSync(entrypoint)) {
-      return entrypoint;
-    }
-  }
-
-  // Fallback: try the worker path as-is (absolute or relative to cwd)
-  // ONLY if it's already an absolute path and we trust the manifest (which we've already validated)
-  if (path.isAbsolute(workerRelPath) && existsSync(workerRelPath)) {
-    return workerRelPath;
-  }
+  const checkedRoots = listPluginPackageRootCandidates(
+    localPluginDir,
+    plugin.packageName,
+    plugin.packagePath,
+  );
 
   throw new Error(
     `Worker entrypoint not found for plugin "${plugin.pluginKey}". ` +
-      `Checked: ${path.resolve(packageDir, workerRelPath)}, ` +
-      `${path.resolve(directDir, workerRelPath)}`,
+      `Checked: ${checkedRoots.map((root) => path.resolve(root, workerRelPath)).join(", ")}`,
   );
-}
-
-function resolveManagedInstallPackageDir(localPluginDir: string, packageName: string): string {
-  if (packageName.startsWith("@")) {
-    return path.join(localPluginDir, "node_modules", ...packageName.split("/"));
-  }
-  return path.join(localPluginDir, "node_modules", packageName);
-}
-
-function isPathInsideDir(candidatePath: string, parentDir: string): boolean {
-  const resolvedCandidate = path.resolve(candidatePath);
-  const resolvedParent = path.resolve(parentDir);
-  const relative = path.relative(resolvedParent, resolvedCandidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }

@@ -33,6 +33,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import type { Db } from "@paperclipai/db";
 import { pluginRegistryService } from "../services/plugin-registry.js";
+import { resolvePluginPackageEntrypoint } from "../services/plugin-entrypoints.js";
 import { logger } from "../middleware/logger.js";
 
 // ---------------------------------------------------------------------------
@@ -112,54 +113,7 @@ export function resolvePluginUiDir(
   entrypointsUi: string,
   packagePath?: string | null,
 ): string | null {
-  // For local-path installs, prefer the persisted package path.
-  if (packagePath) {
-    const resolvedPackagePath = path.resolve(packagePath);
-    if (fs.existsSync(resolvedPackagePath)) {
-      const uiDirFromPackagePath = path.resolve(resolvedPackagePath, entrypointsUi);
-      if (
-        uiDirFromPackagePath.startsWith(resolvedPackagePath)
-        && fs.existsSync(uiDirFromPackagePath)
-      ) {
-        return uiDirFromPackagePath;
-      }
-    }
-  }
-
-  // Resolve the package root within the local plugin directory's node_modules.
-  // npm installs go to <localPluginDir>/node_modules/<packageName>/
-  let packageRoot: string;
-  if (packageName.startsWith("@")) {
-    // Scoped package: @scope/name -> node_modules/@scope/name
-    packageRoot = path.join(localPluginDir, "node_modules", ...packageName.split("/"));
-  } else {
-    packageRoot = path.join(localPluginDir, "node_modules", packageName);
-  }
-
-  // If the standard location doesn't exist, the plugin may have been installed
-  // from a local path. Try to check if the package.json is accessible at the
-  // computed path or if the package is found elsewhere.
-  if (!fs.existsSync(packageRoot)) {
-    // For local-path installs, the packageName may be a directory that doesn't
-    // live inside node_modules. Check if the package exists directly at the
-    // localPluginDir level.
-    const directPath = path.join(localPluginDir, packageName);
-    if (fs.existsSync(directPath)) {
-      packageRoot = directPath;
-    } else {
-      return null;
-    }
-  }
-
-  // Resolve the UI directory relative to the package root
-  const uiDir = path.resolve(packageRoot, entrypointsUi);
-
-  // Verify the resolved UI directory exists and is actually inside the package
-  if (!fs.existsSync(uiDir)) {
-    return null;
-  }
-
-  return uiDir;
+  return resolvePluginPackageEntrypoint(localPluginDir, packageName, entrypointsUi, packagePath);
 }
 
 /**
