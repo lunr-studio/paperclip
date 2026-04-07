@@ -274,6 +274,8 @@ export type {
   Invite,
   JoinRequest,
   InstanceUserRoleGrant,
+  InstanceUserCompanyAccessSummary,
+  InstanceUserDirectoryEntry,
   CompanyPortabilityInclude,
   CompanyPortabilityEnvInput,
   CompanyPortabilityFileEntry,

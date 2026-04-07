@@ -2844,6 +2844,12 @@ export function accessRoutes(
     }
   );
 
+  router.get("/admin/users", async (req, res) => {
+    await assertInstanceAdmin(req);
+    const users = await access.listInstanceUsers();
+    res.json(users);
+  });
+
   router.post(
     "/admin/users/:userId/promote-instance-admin",
     async (req, res) => {

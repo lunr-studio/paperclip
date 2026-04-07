@@ -1,11 +1,18 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
+  authUsers,
+  companies,
   companyMemberships,
   instanceUserRoles,
   principalPermissionGrants,
 } from "@paperclipai/db";
-import type { PermissionKey, PrincipalType } from "@paperclipai/shared";
+import type {
+  InstanceUserDirectoryEntry,
+  InstanceUserCompanyAccessSummary,
+  PermissionKey,
+  PrincipalType,
+} from "@paperclipai/shared";
 
 type MembershipRow = typeof companyMemberships.$inferSelect;
 type GrantInput = {
@@ -170,6 +177,69 @@ export function accessService(db: Db) {
       .from(companyMemberships)
       .where(and(eq(companyMemberships.principalType, "user"), eq(companyMemberships.principalId, userId)))
       .orderBy(sql`${companyMemberships.createdAt} desc`);
+  }
+
+  async function listInstanceUsers(): Promise<InstanceUserDirectoryEntry[]> {
+    const [users, adminRoles, companyAccessRows] = await Promise.all([
+      db
+        .select({
+          id: authUsers.id,
+          name: authUsers.name,
+          email: authUsers.email,
+          createdAt: authUsers.createdAt,
+        })
+        .from(authUsers)
+        .orderBy(sql`${authUsers.createdAt} desc`),
+      db
+        .select({ userId: instanceUserRoles.userId })
+        .from(instanceUserRoles)
+        .where(eq(instanceUserRoles.role, "instance_admin")),
+      db
+        .select({
+          userId: companyMemberships.principalId,
+          companyId: companyMemberships.companyId,
+          companyName: companies.name,
+          companyIssuePrefix: companies.issuePrefix,
+          status: companyMemberships.status,
+          membershipRole: companyMemberships.membershipRole,
+          createdAt: companyMemberships.createdAt,
+          updatedAt: companyMemberships.updatedAt,
+        })
+        .from(companyMemberships)
+        .innerJoin(companies, eq(companies.id, companyMemberships.companyId))
+        .where(eq(companyMemberships.principalType, "user"))
+        .orderBy(sql`${companyMemberships.createdAt} desc`),
+    ]);
+
+    const instanceAdminUserIds = new Set(adminRoles.map((row) => row.userId));
+    const companyAccessByUser = new Map<string, InstanceUserCompanyAccessSummary[]>();
+
+    for (const row of companyAccessRows) {
+      const existing = companyAccessByUser.get(row.userId);
+      const summary: InstanceUserCompanyAccessSummary = {
+        companyId: row.companyId,
+        companyName: row.companyName,
+        companyIssuePrefix: row.companyIssuePrefix,
+        status: row.status as InstanceUserCompanyAccessSummary["status"],
+        membershipRole: row.membershipRole,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      };
+      if (existing) {
+        existing.push(summary);
+      } else {
+        companyAccessByUser.set(row.userId, [summary]);
+      }
+    }
+
+    return users.map((user) => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+      isInstanceAdmin: instanceAdminUserIds.has(user.id),
+      companyAccess: companyAccessByUser.get(user.id) ?? [],
+    }));
   }
 
   async function setUserCompanyAccess(userId: string, companyIds: string[]) {
@@ -372,6 +442,7 @@ export function accessService(db: Db) {
     promoteInstanceAdmin,
     demoteInstanceAdmin,
     listUserCompanyAccess,
+    listInstanceUsers,
     setUserCompanyAccess,
     setPrincipalGrants,
     listPrincipalGrants,

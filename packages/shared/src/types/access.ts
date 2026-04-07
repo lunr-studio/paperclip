@@ -79,3 +79,22 @@ export interface InstanceUserRoleGrant {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface InstanceUserCompanyAccessSummary {
+  companyId: string;
+  companyName: string;
+  companyIssuePrefix: string;
+  status: MembershipStatus;
+  membershipRole: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface InstanceUserDirectoryEntry {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: Date;
+  isInstanceAdmin: boolean;
+  companyAccess: InstanceUserCompanyAccessSummary[];
+}
