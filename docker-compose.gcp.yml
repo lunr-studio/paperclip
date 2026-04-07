@@ -1,0 +1,42 @@
+services:
+  paperclip:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_UID: "${USER_UID:-1000}"
+        USER_GID: "${USER_GID:-1000}"
+    restart: unless-stopped
+    environment:
+      HOST: "0.0.0.0"
+      PAPERCLIP_HOME: "/paperclip"
+      PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: "public"
+      PAPERCLIP_AUTH_BASE_URL_MODE: "explicit"
+      PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:?PAPERCLIP_PUBLIC_URL must be set}"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
+      PAPERCLIP_AGENT_JWT_SECRET: "${PAPERCLIP_AGENT_JWT_SECRET:?PAPERCLIP_AGENT_JWT_SECRET must be set}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      PAPERCLIP_SECRETS_STRICT_MODE: "true"
+      CODEX_HOME: "/paperclip/.codex"
+      USER_UID: "${USER_UID:-1000}"
+      USER_GID: "${USER_GID:-1000}"
+    expose:
+      - "3100"
+    volumes:
+      - "${PAPERCLIP_DATA_DIR:-/opt/paperclip/data}:/paperclip"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - paperclip
+    environment:
+      PAPERCLIP_HOSTNAME: "${PAPERCLIP_HOSTNAME:?PAPERCLIP_HOSTNAME must be set}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - "${PAPERCLIP_CADDY_DATA_DIR:-/opt/paperclip/caddy-data}:/data"
+      - "${PAPERCLIP_CADDY_CONFIG_DIR:-/opt/paperclip/caddy-config}:/config"

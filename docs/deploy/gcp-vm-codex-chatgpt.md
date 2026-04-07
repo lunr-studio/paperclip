@@ -95,63 +95,19 @@ cd paperclip
 git checkout <your-branch>
 ```
 
-## 3. Configure Docker Compose and Caddy
+## 3. Configure the Tracked Deploy Assets
 
-Create a Compose file that runs Paperclip behind Caddy.
+This repo now carries the production GCP deployment assets directly in source control:
 
-```yaml
-services:
-  paperclip:
-    build: .
-    restart: unless-stopped
-    environment:
-      HOST: "0.0.0.0"
-      PAPERCLIP_HOME: "/paperclip"
-      PAPERCLIP_DEPLOYMENT_MODE: "authenticated"
-      PAPERCLIP_DEPLOYMENT_EXPOSURE: "public"
-      PAPERCLIP_AUTH_BASE_URL_MODE: "explicit"
-      PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL}"
-      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET}"
-      PAPERCLIP_AGENT_JWT_SECRET: "${PAPERCLIP_AGENT_JWT_SECRET}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-      PAPERCLIP_SECRETS_STRICT_MODE: "true"
-      CODEX_HOME: "/paperclip/.codex"
-      USER_UID: "1000"
-      USER_GID: "1000"
-    expose:
-      - "3100"
-    volumes:
-      - /opt/paperclip/data:/paperclip
+- [docker-compose.gcp.yml](/Users/trishan/Documents/paperclip/docker-compose.gcp.yml)
+- [deploy/Caddyfile](/Users/trishan/Documents/paperclip/deploy/Caddyfile)
+- [.env.gcp.example](/Users/trishan/Documents/paperclip/.env.gcp.example)
 
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    depends_on:
-      - paperclip
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - /opt/paperclip/caddy-data:/data
-      - /opt/paperclip/caddy-config:/config
-```
-
-Create `deploy/Caddyfile`:
-
-```caddyfile
-paperclip.34-123-45-67.sslip.io {
-  reverse_proxy paperclip:3100
-}
-```
-
-Create `.env.gcp`:
+On the VM, copy the template, tighten its permissions, and fill in the real values:
 
 ```sh
-PAPERCLIP_PUBLIC_URL=https://paperclip.34-123-45-67.sslip.io
-BETTER_AUTH_SECRET=<random-secret>
-PAPERCLIP_AGENT_JWT_SECRET=<random-secret>
-ANTHROPIC_API_KEY=
+cp .env.gcp.example .env.gcp
+chmod 600 .env.gcp
 ```
 
 Generate strong secrets with:
@@ -160,9 +116,47 @@ Generate strong secrets with:
 openssl rand -hex 32
 ```
 
+Set at least:
+
+```sh
+PAPERCLIP_PUBLIC_URL=https://paperclip.34-123-45-67.sslip.io
+PAPERCLIP_HOSTNAME=paperclip.34-123-45-67.sslip.io
+BETTER_AUTH_SECRET=<random-secret>
+PAPERCLIP_AGENT_JWT_SECRET=<random-secret>
+ANTHROPIC_API_KEY=
+PAPERCLIP_DATA_DIR=/opt/paperclip/data
+PAPERCLIP_CADDY_DATA_DIR=/opt/paperclip/caddy-data
+PAPERCLIP_CADDY_CONFIG_DIR=/opt/paperclip/caddy-config
+USER_UID=1000
+USER_GID=1000
+```
+
 If your mounted `/opt/paperclip/data` directory is owned by a different Linux user, update `USER_UID` and `USER_GID` to match `id -u` and `id -g` on the VM. Without that, Paperclip may fail to create directories under `/paperclip` on first boot.
 
-## 4. Start Paperclip
+The tracked Caddy config uses `PAPERCLIP_HOSTNAME`, so you do not need to edit [deploy/Caddyfile](/Users/trishan/Documents/paperclip/deploy/Caddyfile) for each host.
+
+## 4. Run the Deployment Verification Check
+
+Before the first deploy, and before every rebuild after changing secrets or Dockerfiles, run:
+
+```sh
+./scripts/verify-gcp-deploy.sh
+```
+
+This check verifies that:
+
+- the tracked GCP Compose and Caddy assets exist
+- the production Dockerfiles do not use floating `@latest` CLI installs
+- the pinned CLI installs are still present in the reviewed Dockerfiles
+- `.env.gcp` is locked down to `600` or `400` when it exists
+
+If you keep the env file somewhere else, pass it explicitly:
+
+```sh
+./scripts/verify-gcp-deploy.sh /path/to/.env.gcp
+```
+
+## 5. Start Paperclip
 
 ```sh
 docker compose --env-file .env.gcp -f docker-compose.gcp.yml up --build -d
@@ -170,7 +164,7 @@ docker compose --env-file .env.gcp -f docker-compose.gcp.yml up --build -d
 
 Open the public URL in your browser once the containers are healthy.
 
-## 5. Use Native Codex Login Instead of `OPENAI_API_KEY`
+## 6. Use Native Codex Login Instead of `OPENAI_API_KEY`
 
 For `codex_local`, this deployment intentionally uses the Codex CLI's own login state instead of an API key. Do not set `OPENAI_API_KEY` if you want Codex runs billed through your ChatGPT/Codex account.
 
@@ -195,7 +189,7 @@ gcloud compute ssh paperclip-vm --project "$PROJECT_ID" --zone "$ZONE" --command
 
 Adjust the ownership values if your container user is not `1000:1000`.
 
-## 6. Bootstrap the First Instance Admin
+## 7. Bootstrap the First Instance Admin
 
 If the app reports that instance setup is still required, generate the bootstrap invite from inside the container:
 
@@ -205,7 +199,7 @@ docker compose --env-file .env.gcp -f docker-compose.gcp.yml exec paperclip pnpm
 
 Open the invite URL it prints, sign in, and claim the board.
 
-## 7. Configure Agents
+## 8. Configure Agents
 
 Inside the Paperclip UI:
 
@@ -231,6 +225,26 @@ Expected outcomes:
 - `codex login status` reports a ChatGPT/Codex login
 - a `codex_local` agent passes its environment check without `OPENAI_API_KEY`
 - the instance remains usable after a VM reboot
+
+## Pinned CLI Versions and Bump Process
+
+The production image now pins the AI CLIs in [Dockerfile](/Users/trishan/Documents/paperclip/Dockerfile):
+
+- `@anthropic-ai/claude-code@2.1.92`
+- `@openai/codex@0.118.0`
+- `opencode-ai@1.3.17`
+
+The review container also pins its CLI installs in [docker/untrusted-review/Dockerfile](/Users/trishan/Documents/paperclip/docker/untrusted-review/Dockerfile).
+
+When you intentionally upgrade those tools:
+
+1. Update the pinned version values in the tracked Dockerfiles.
+2. Re-run `./scripts/verify-gcp-deploy.sh`.
+3. Rebuild the image with `docker compose --env-file .env.gcp -f docker-compose.gcp.yml up --build -d`.
+4. Re-run the runtime checks:
+   - `docker compose --env-file .env.gcp -f docker-compose.gcp.yml exec paperclip codex --version`
+   - `docker compose --env-file .env.gcp -f docker-compose.gcp.yml exec paperclip claude --version`
+   - `docker compose --env-file .env.gcp -f docker-compose.gcp.yml exec paperclip opencode --version`
 
 ## Persistence and Backups
 

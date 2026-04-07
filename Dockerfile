@@ -52,9 +52,16 @@ RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" &
 FROM base AS production
 ARG USER_UID=1000
 ARG USER_GID=1000
+ARG CLAUDE_CODE_VERSION=2.1.92
+ARG CODEX_CLI_VERSION=0.118.0
+ARG OPENCODE_VERSION=1.3.17
 WORKDIR /app
 COPY --chown=node:node --from=build /app /app
-RUN npm install --global --omit=dev @anthropic-ai/claude-code@latest @openai/codex@latest opencode-ai \
+# Pin production agent CLIs so rebuilds do not silently pull different binaries.
+RUN npm install --global --omit=dev \
+  @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
+  @openai/codex@${CODEX_CLI_VERSION} \
+  opencode-ai@${OPENCODE_VERSION} \
   && mkdir -p /paperclip \
   && chown node:node /paperclip
 
